@@ -207,24 +207,30 @@ function extractCoordsFromUrl(url) {
   const atMatch = url.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
   if (atMatch) return coord(atMatch[1], atMatch[2]);
 
+  // ③ data= blob: !3d{lat}!4d{lng}
+  // Google Maps place URLs from server-side redirects encode coords here:
+  // /maps/place/Name/data=...!3m1!4b1!4m6!3m5!1sPLACE_ID!8m2!3d52.123!4d13.456...
+  const dataMatch = url.match(/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/);
+  if (dataMatch) return coord(dataMatch[1], dataMatch[2]);
+
   let u;
   try { u = new URL(url); } catch { return null; }
 
-  // ③ ?q=lat,lng
+  // ④ ?q=lat,lng
   const q = u.searchParams.get('q');
   if (q) {
     const m = q.match(/^(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)$/);
     if (m) return coord(m[1], m[2]);
   }
 
-  // ④ ?ll=lat,lng
+  // ⑤ ?ll=lat,lng
   const ll = u.searchParams.get('ll');
   if (ll) {
     const m = ll.match(/^(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)$/);
     if (m) return coord(m[1], m[2]);
   }
 
-  // ⑤ ?daddr=lat,lng
+  // ⑥ ?daddr=lat,lng
   const daddr = u.searchParams.get('daddr');
   if (daddr) {
     const m = daddr.match(/^(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)$/);
