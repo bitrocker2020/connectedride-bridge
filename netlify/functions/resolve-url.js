@@ -34,13 +34,13 @@ exports.handler = async (event) => {
 
     let { lat, lng } = result;
 
-    // If no coords found in URL/HTML, try geocoding the ?q= address via Nominatim
+    // If no coords found in URL/HTML, try geocoding cascade on the ?q= address
     if (lat === null || lng === null) {
       try {
         const u = new URL(result.finalUrl);
         const q = u.searchParams.get('q');
         if (q) {
-          const geo = await geocodeNominatim(q);
+          const geo = await geocodeCascade(q);
           if (geo) { lat = geo.lat; lng = geo.lng; }
         }
       } catch { /* ignore */ }
@@ -172,24 +172,95 @@ function extractCoordsFromUrl(url) {
   return null;
 }
 
+/* ── Geocoding cascade — tries multiple strategies & services ── */
+async function geocodeCascade(rawAddress) {
+  // Normalise: decode URL-encoded chars, collapse whitespace
+  const address = decodeURIComponent(rawAddress).replace(/\+/g, ' ').trim();
+
+  // ── Strategy 1: Nominatim — full address ─────────────────────
+  let result = await geocodeNominatim(address);
+  if (result) return result;
+
+  // ── Strategy 2: Nominatim — full address + ", Malaysia" ──────
+  if (!address.toLowerCase().includes('malaysia')) {
+    result = await geocodeNominatim(address + ', Malaysia');
+    if (result) return result;
+  }
+
+  // ── Strategy 3: Nominatim — simplified (name + postcode) ─────
+  // Extract: first comma-delimited token (place name) + any 5-digit postcode
+  const postcodeMatch = address.match(/\b(\d{5})\b/);
+  const placeName     = address.split(',')[0].trim();
+  if (postcodeMatch && placeName) {
+    result = await geocodeNominatim(`${placeName}, ${postcodeMatch[1]}, Malaysia`);
+    if (result) return result;
+
+    // Strategy 3b: postcode-only (gives area-level coords)
+    result = await geocodeNominatim(`${postcodeMatch[1]}, Malaysia`);
+    if (result) return result;
+  }
+
+  // ── Strategy 4: Photon (komoot) — full address ───────────────
+  result = await geocodePhoton(address);
+  if (result) return result;
+
+  // ── Strategy 5: Photon — place name only ─────────────────────
+  if (placeName && placeName !== address) {
+    result = await geocodePhoton(placeName + ' Malaysia');
+    if (result) return result;
+  }
+
+  return null;
+}
+
 /* ── Nominatim geocoder (OpenStreetMap) — no API key needed ─── */
-async function geocodeNominatim(address) {
-  const endpoint =
-    `https://nominatim.openstreetmap.org/search` +
-    `?q=${encodeURIComponent(address)}&format=json&limit=1`;
+async function geocodeNominatim(query) {
+  try {
+    const endpoint =
+      `https://nominatim.openstreetmap.org/search` +
+      `?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=0`;
 
-  const res = await fetch(endpoint, {
-    headers: {
-      'User-Agent': 'ConnectedRideBridge/1.0',
-      'Accept':     'application/json',
-    },
-  });
+    const res = await fetch(endpoint, {
+      headers: {
+        'User-Agent': 'ConnectedRideBridge/1.0',
+        'Accept':     'application/json',
+      },
+    });
 
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!Array.isArray(data) || data.length === 0) return null;
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return null;
+    console.log('[resolve-url] Nominatim hit:', query, '->', data[0].lat, data[0].lon);
+    return validCoord(data[0].lat, data[0].lon);
+  } catch {
+    return null;
+  }
+}
 
-  return validCoord(data[0].lat, data[0].lon);
+/* ── Photon geocoder (komoot) — no API key needed ───────────── */
+async function geocodePhoton(query) {
+  try {
+    const endpoint =
+      `https://photon.komoot.io/api/` +
+      `?q=${encodeURIComponent(query)}&limit=1`;
+
+    const res = await fetch(endpoint, {
+      headers: {
+        'User-Agent': 'ConnectedRideBridge/1.0',
+        'Accept':     'application/json',
+      },
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const feat = data?.features?.[0];
+    if (!feat) return null;
+    const [lng, lat] = feat.geometry?.coordinates ?? [];
+    console.log('[resolve-url] Photon hit:', query, '->', lat, lng);
+    return validCoord(lat, lng);
+  } catch {
+    return null;
+  }
 }
 
 function extractCoordsFromHtml(html) {
