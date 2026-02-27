@@ -82,11 +82,16 @@ async function convertLink(url) {
     if (isShortUrl(url)) {
       const resolved = await resolveShortUrl(url);
       resolvedUrl = resolved.finalUrl;
-      coords = resolved.coords; // already extracted server-side from URL + HTML
+      coords = resolved.coords;
+      // Log so we can see what came back in the browser console
+      console.log('[debug] Netlify resolved:', { finalUrl: resolvedUrl, coords });
     }
 
     // Step 2: try to extract coords from the resolved URL (no API needed)
-    if (!coords) coords = extractCoordsFromUrl(resolvedUrl);
+    if (!coords) {
+      coords = extractCoordsFromUrl(resolvedUrl);
+      console.log('[debug] URL parse result:', coords, 'from:', resolvedUrl.substring(0, 120));
+    }
 
     // Step 3: fall back to Geocoding API for place-name URLs
     if (!coords) {
