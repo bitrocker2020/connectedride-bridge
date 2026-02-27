@@ -44,7 +44,21 @@ mapsInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConv
 async function handleConvert() {
   const raw = mapsInput.value.trim();
   if (!raw) { showError('Please paste a Google Maps link first.'); return; }
-  await convertLink(raw);
+  await convertLink(cleanUrl(raw));
+}
+
+// Strip Google tracking params (g_st, g_ep, etc.) from short URLs.
+// e.g. maps.app.goo.gl/XYZ?g_st=ic  →  maps.app.goo.gl/XYZ
+function cleanUrl(url) {
+  try {
+    const u = new URL(url);
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps/.test(url)) {
+      return `${u.origin}${u.pathname}`;
+    }
+    return url;
+  } catch {
+    return url;
+  }
 }
 
 async function convertLink(url) {
