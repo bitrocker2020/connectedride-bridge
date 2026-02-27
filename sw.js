@@ -37,10 +37,14 @@ self.addEventListener('activate', (event) => {
 /* ── Fetch: cache-first for shell, network-first for API ─────── */
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+
+  // Only handle http/https — ignore chrome-extension://, data:, etc.
+  if (!request.url.startsWith('http')) return;
+
   const url = new URL(request.url);
 
-  // Always go to network for Google APIs (Geocoding)
-  if (url.hostname.includes('googleapis.com')) {
+  // Always go to network for Google APIs and Netlify functions
+  if (url.hostname.includes('googleapis.com') || url.pathname.startsWith('/.netlify/')) {
     event.respondWith(
       fetch(request).catch(() =>
         new Response(
@@ -57,8 +61,8 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
-        // Cache successful GET responses for shell assets
-        if (request.method === 'GET' && response.status === 200) {
+        // Only cache successful http/https GET responses
+        if (request.method === 'GET' && response.status === 200 && request.url.startsWith('http')) {
           const clone = response.clone();
           caches.open(CACHE_VERSION).then((cache) => cache.put(request, clone));
         }
