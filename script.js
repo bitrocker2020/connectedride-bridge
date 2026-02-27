@@ -148,8 +148,19 @@ function extractFromHtml(html) {
 async function resolveShortUrl(url) {
   const encoded = encodeURIComponent(url);
 
-  // ── Proxy 1: allorigins.win ──────────────────────────────────
-  // Returns JSON: { status: { url: "<final URL>" }, contents: "<HTML>" }
+  // ── Method 1: Netlify serverless function (when deployed) ────
+  // Server-side redirect following — no CORS, no bot detection.
+  try {
+    const res = await fetchWithTimeout(
+      `/.netlify/functions/resolve-url?url=${encoded}`, 6000
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.finalUrl && data.finalUrl !== url) return data.finalUrl;
+    }
+  } catch { /* not on Netlify — try external proxies */ }
+
+  // ── Method 2: allorigins.win ──────────────────────────────────
   try {
     const res = await fetchWithTimeout(
       `https://api.allorigins.win/get?url=${encoded}`, 7000
@@ -158,14 +169,12 @@ async function resolveShortUrl(url) {
       const data = await res.json();
       const finalUrl = data.status?.url;
       if (finalUrl && finalUrl !== url) return finalUrl;
-      // status.url sometimes echoes back the short URL — fall back to HTML
       const fromHtml = extractFromHtml(data.contents || '');
       if (fromHtml) return fromHtml;
     }
-  } catch { /* proxy failed — try next */ }
+  } catch { /* try next */ }
 
-  // ── Proxy 2: corsproxy.io ────────────────────────────────────
-  // Returns raw HTML of the final page; parse it for the canonical URL
+  // ── Method 3: corsproxy.io ────────────────────────────────────
   try {
     const res = await fetchWithTimeout(
       `https://corsproxy.io/?${encoded}`, 7000
@@ -175,11 +184,11 @@ async function resolveShortUrl(url) {
       const fromHtml = extractFromHtml(html);
       if (fromHtml) return fromHtml;
     }
-  } catch { /* both proxies failed */ }
+  } catch { /* all methods exhausted */ }
 
   throw new Error(
-    'Could not expand this short link (both proxies failed). ' +
-    'Try pasting the full Google Maps URL instead — open the link in your browser, then copy the address bar URL.'
+    'Could not expand this short link. ' +
+    'Open the link in your browser, copy the full URL from the address bar, and paste that instead.'
   );
 }
 
