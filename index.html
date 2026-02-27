@@ -74,44 +74,6 @@
       </div>
     </section>
 
-    <!-- ═══════════════════════════════════ SETTINGS -->
-    <section class="card settings-card">
-      <button class="settings-toggle" id="settingsToggle" aria-expanded="false">
-        <span class="settings-toggle-left">
-          <span class="settings-icon">⚙</span>
-          <span>API Key Settings</span>
-        </span>
-        <span id="keyStatus" class="key-status key-status--missing">Not set</span>
-      </button>
-
-      <div class="settings-body hidden" id="settingsBody">
-        <p class="settings-info">
-          Required only for place-name URLs. Your key is saved <strong>on this device only</strong> — it is never sent anywhere except directly to Google.
-        </p>
-        <div class="input-group" style="margin-bottom: 10px;">
-          <input
-            type="password"
-            id="apiKeyInput"
-            placeholder="AIza..."
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button id="toggleKeyVisibility" class="btn btn-secondary" title="Show / hide key">
-            Show
-          </button>
-        </div>
-        <div class="settings-actions">
-          <button id="saveKeyBtn" class="btn btn-primary" style="flex:1;">Save Key</button>
-          <button id="clearKeyBtn" class="btn btn-ghost">Remove</button>
-        </div>
-        <p class="settings-tip">
-          Restrict this key to <strong>Geocoding API</strong> + your domain in
-          <a href="https://console.cloud.google.com" target="_blank" rel="noopener">Google Cloud Console</a>
-          to prevent misuse.
-        </p>
-      </div>
-    </section>
-
     <!-- ═══════════════════════════════════ RECENT RIDES -->
     <section class="card history-card">
       <div class="history-header">
