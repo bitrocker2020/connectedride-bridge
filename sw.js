@@ -3,7 +3,7 @@
    Cache-first strategy for shell assets, network-first for API.
    ══════════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'cr-bridge-v1';
+const CACHE_VERSION = 'cr-bridge-v1.0.1'; // bump this whenever you deploy a new version
 const SHELL_ASSETS  = [
   '/',
   '/index.html',

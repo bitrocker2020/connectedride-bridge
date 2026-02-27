@@ -2,6 +2,8 @@
    ConnectedRide Bridge — script.js
    ══════════════════════════════════════════════════════════════ */
 
+const APP_VERSION = '1.0.1';
+
 const HISTORY_KEY = 'cr_bridge_history';
 const MAX_HISTORY = 10;
 

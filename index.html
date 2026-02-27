@@ -7,7 +7,10 @@
   <meta name="description" content="Convert Google Maps links to GPS coordinates for your BMW ride." />
   <title>ConnectedRide Bridge</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="styles.css" />
+  <!-- Cache busting: timestamp is generated once per page load -->
+  <script>var __CR_V = Date.now();</script>
+  <link id="cr-css" rel="stylesheet" href="styles.css" />
+  <script>document.getElementById('cr-css').href = 'styles.css?v=' + __CR_V;</script>
 </head>
 <body>
 
@@ -132,6 +135,12 @@
     <p>ConnectedRide Bridge &copy; 2025 &mdash; Built for riders, by riders.</p>
   </footer>
 
-  <script src="script.js"></script>
+  <script>
+    (function () {
+      var s = document.createElement('script');
+      s.src = 'script.js?v=' + __CR_V;
+      document.body.appendChild(s);
+    }());
+  </script>
 </body>
 </html>
