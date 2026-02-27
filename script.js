@@ -15,7 +15,6 @@ const latEl       = document.getElementById('lat');
 const lngEl       = document.getElementById('lng');
 const successMsg  = document.getElementById('successMsg');
 const copyBtn     = document.getElementById('copyBtn');
-const bmwBtn      = document.getElementById('bmwBtn');
 const historyList = document.getElementById('historyList');
 const clearBtn    = document.getElementById('clearBtn');
 
@@ -85,7 +84,8 @@ async function convertLink(url) {
       currentLng = coords.lng;
       showResult(coords.lat, coords.lng);
       await copyToClipboard(`${coords.lat}, ${coords.lng}`);
-      saveToHistory(coords.lat, coords.lng, url);
+      const placeName = extractPlaceName(resolvedUrl) || extractPlaceName(url);
+      saveToHistory(coords.lat, coords.lng, url, placeName);
     } else {
       showError('Could not extract coordinates. Try opening the link in your browser and copying the full URL from the address bar.');
     }
@@ -198,6 +198,25 @@ function extractCoordsFromUrl(url) {
   return null;
 }
 
+function extractPlaceName(url) {
+  try {
+    // /maps/place/Place+Name/@lat,lng
+    const pathMatch = url.match(/\/maps\/place\/([^/@?]+)/);
+    if (pathMatch) {
+      const name = decodeURIComponent(pathMatch[1].replace(/\+/g, ' ')).split(',')[0].trim();
+      if (name) return name;
+    }
+    // ?q=Place+Name,+Address (iPhone GPS share)
+    const u = new URL(url);
+    const q = u.searchParams.get('q');
+    if (q) {
+      const name = decodeURIComponent(q.replace(/\+/g, ' ')).split(',')[0].trim();
+      if (name && !/^-?\d/.test(name)) return name; // skip if it's bare coords
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 function coord(latStr, lngStr) {
   const lat = parseFloat(latStr);
   const lng = parseFloat(lngStr);
@@ -229,26 +248,14 @@ copyBtn.addEventListener('click', () => {
 });
 
 /* ══════════════════════════════════════════════════════════════
-   BMW APP LAUNCH
-   ══════════════════════════════════════════════════════════════ */
-bmwBtn.addEventListener('click', () => {
-  if (currentLat === null) return;
-  const lat = currentLat.toFixed(6);
-  const lng = currentLng.toFixed(6);
-  window.location.href = `geo:${lat},${lng}?q=${lat},${lng}`;
-});
-
-/* ══════════════════════════════════════════════════════════════
    HISTORY  (localStorage)
    ══════════════════════════════════════════════════════════════ */
-function saveToHistory(lat, lng, sourceUrl) {
+function saveToHistory(lat, lng, sourceUrl, placeName) {
   const history = loadHistory();
-  const maxLen  = 48;
-  const source  = sourceUrl.length > maxLen ? sourceUrl.slice(0, maxLen) + '…' : sourceUrl;
   const entry   = {
     lat:  lat.toFixed(6),
     lng:  lng.toFixed(6),
-    source,
+    name: placeName || 'Unknown Location',
     date: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
   };
 
@@ -278,12 +285,10 @@ function renderHistory() {
 
   history.forEach((entry) => {
     const li = document.createElement('li');
-    li.setAttribute('title', 'Click to reload these coordinates');
+    li.setAttribute('title', 'Click to copy coordinates');
+    const displayName = entry.name || entry.source || 'Unknown Location';
     li.innerHTML = `
-      <div>
-        <div class="history-coords">${entry.lat}, ${entry.lng}</div>
-        <div class="history-source">${escapeHtml(entry.source)}</div>
-      </div>
+      <div class="history-name">${escapeHtml(displayName)}</div>
       <div class="history-date">${entry.date}</div>
     `;
     li.addEventListener('click', () => {
