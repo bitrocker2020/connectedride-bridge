@@ -13,18 +13,20 @@ function getApiKey() {
 }
 
 /* ── DOM refs ────────────────────────────────────────────────── */
-const mapsInput           = document.getElementById('mapsInput');
-const pasteBtn            = document.getElementById('pasteBtn');
-const convertBtn          = document.getElementById('convertBtn');
-const errorBox            = document.getElementById('errorMsg');
-const resultEl            = document.getElementById('result');
-const latEl               = document.getElementById('lat');
-const lngEl               = document.getElementById('lng');
-const successMsg          = document.getElementById('successMsg');
-const copyBtn             = document.getElementById('copyBtn');
-const bmwBtn              = document.getElementById('bmwBtn');
-const historyList         = document.getElementById('historyList');
-const clearBtn            = document.getElementById('clearBtn');
+const mapsInput         = document.getElementById('mapsInput');
+const pasteBtn          = document.getElementById('pasteBtn');
+const convertBtn        = document.getElementById('convertBtn');
+const errorBox          = document.getElementById('errorMsg');
+const resultEl          = document.getElementById('result');
+const latEl             = document.getElementById('lat');
+const lngEl             = document.getElementById('lng');
+const successMsg        = document.getElementById('successMsg');
+const copyBtn           = document.getElementById('copyBtn');
+const bmwBtn            = document.getElementById('bmwBtn');
+const historyList       = document.getElementById('historyList');
+const clearBtn          = document.getElementById('clearBtn');
+
+// Settings
 const settingsToggle      = document.getElementById('settingsToggle');
 const settingsBody        = document.getElementById('settingsBody');
 const apiKeyInput         = document.getElementById('apiKeyInput');
@@ -107,7 +109,8 @@ async function convertLink(url) {
    SHORT URL RESOLUTION
    maps.app.goo.gl and goo.gl/maps are redirects — coordinates only
    appear in the final expanded URL. We try two CORS proxies in order,
-   and parse the HTML response to find the canonical URL with coords.
+   and parse the HTML response as a fallback in case the redirect URL
+   itself isn't returned.
    ══════════════════════════════════════════════════════════════ */
 function isShortUrl(url) {
   return /maps\.app\.goo\.gl|goo\.gl\/maps/.test(url);
@@ -123,16 +126,17 @@ async function fetchWithTimeout(url, ms) {
   }
 }
 
-// Extract canonical Google Maps URL from proxy HTML response.
-// og:url and <link rel="canonical"> both reliably contain @lat,lng.
+// Pull @lat,lng or og:url out of raw HTML returned by a proxy
 function extractFromHtml(html) {
   if (!html) return null;
 
+  // og:url is Google's canonical URL and usually contains @lat,lng
   const ogUrl =
     html.match(/property="og:url"\s+content="([^"]+)"/)?.[1] ||
     html.match(/content="([^"]+)"\s+property="og:url"/)?.[1];
   if (ogUrl) return ogUrl.replace(/&amp;/g, '&');
 
+  // <link rel="canonical" href="...">
   const canonical =
     html.match(/rel="canonical"\s+href="([^"]+)"/)?.[1] ||
     html.match(/href="([^"]+)"\s+rel="canonical"/)?.[1];
@@ -154,14 +158,14 @@ async function resolveShortUrl(url) {
       const data = await res.json();
       const finalUrl = data.status?.url;
       if (finalUrl && finalUrl !== url) return finalUrl;
-      // status.url sometimes echoes the short URL — parse HTML instead
+      // status.url sometimes echoes back the short URL — fall back to HTML
       const fromHtml = extractFromHtml(data.contents || '');
       if (fromHtml) return fromHtml;
     }
   } catch { /* proxy failed — try next */ }
 
   // ── Proxy 2: corsproxy.io ────────────────────────────────────
-  // Returns raw HTML of the final page; parse it for the canonical URL.
+  // Returns raw HTML of the final page; parse it for the canonical URL
   try {
     const res = await fetchWithTimeout(
       `https://corsproxy.io/?${encoded}`, 7000
@@ -175,7 +179,7 @@ async function resolveShortUrl(url) {
 
   throw new Error(
     'Could not expand this short link (both proxies failed). ' +
-    'Open the link in your browser, then copy the full URL from the address bar and paste that instead.'
+    'Try pasting the full Google Maps URL instead — open the link in your browser, then copy the address bar URL.'
   );
 }
 
@@ -442,9 +446,10 @@ function escapeHtml(str) {
    ══════════════════════════════════════════════════════════════ */
 function updateKeyStatus() {
   const saved = !!getApiKey();
-  keyStatus.textContent = saved ? 'Key saved' : 'Not set';
-  keyStatus.className   = `key-status ${saved ? 'key-status--saved' : 'key-status--missing'}`;
+  keyStatus.textContent       = saved ? 'Key saved' : 'Not set';
+  keyStatus.className         = `key-status ${saved ? 'key-status--saved' : 'key-status--missing'}`;
   if (saved) {
+    // Pre-fill input with masked placeholder so user knows a key exists
     apiKeyInput.value       = '';
     apiKeyInput.placeholder = '••••••••••••••••••••';
   } else {
@@ -452,34 +457,42 @@ function updateKeyStatus() {
   }
 }
 
+// Collapse / expand
 settingsToggle.addEventListener('click', () => {
   const isOpen = settingsToggle.getAttribute('aria-expanded') === 'true';
   settingsToggle.setAttribute('aria-expanded', String(!isOpen));
   settingsBody.classList.toggle('hidden', isOpen);
 });
 
+// Show / hide key
 toggleKeyVisibility.addEventListener('click', () => {
   const isPassword = apiKeyInput.type === 'password';
-  apiKeyInput.type                = isPassword ? 'text' : 'password';
+  apiKeyInput.type              = isPassword ? 'text' : 'password';
   toggleKeyVisibility.textContent = isPassword ? 'Hide' : 'Show';
 });
 
+// Save
 saveKeyBtn.addEventListener('click', () => {
   const val = apiKeyInput.value.trim();
-  if (!val) { alert('Please paste your API key first.'); return; }
+  if (!val) {
+    alert('Please paste your API key first.');
+    return;
+  }
   if (!val.startsWith('AIza') || val.length < 30) {
     alert('That doesn\'t look like a valid Google API key (should start with "AIza").');
     return;
   }
   localStorage.setItem(API_KEY_STORAGE, val);
-  apiKeyInput.value               = '';
-  apiKeyInput.type                = 'password';
+  apiKeyInput.value = '';
+  apiKeyInput.type  = 'password';
   toggleKeyVisibility.textContent = 'Show';
   updateKeyStatus();
+  // Collapse panel after saving
   settingsToggle.setAttribute('aria-expanded', 'false');
   settingsBody.classList.add('hidden');
 });
 
+// Remove
 clearKeyBtn.addEventListener('click', () => {
   if (!confirm('Remove your saved API key from this device?')) return;
   localStorage.removeItem(API_KEY_STORAGE);
