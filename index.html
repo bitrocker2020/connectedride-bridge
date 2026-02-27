@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1C69D4" />
+  <meta name="description" content="Convert Google Maps links to GPS coordinates for your BMW ride." />
+  <title>ConnectedRide Bridge</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════ HEADER -->
+  <header>
+    <div class="header-inner">
+      <div class="bmw-roundel" aria-hidden="true">
+        <div class="roundel-q1"></div>
+        <div class="roundel-q2"></div>
+        <div class="roundel-q3"></div>
+        <div class="roundel-q4"></div>
+      </div>
+      <h1>LETS RIDE!</h1>
+      <p class="tagline">ConnectedRide Bridge</p>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ═══════════════════════════════════ CONVERT CARD -->
+    <section class="card convert-card">
+      <h2>Paste &amp; Convert</h2>
+      <p class="subtitle">Drop a Google Maps link below to extract GPS coordinates</p>
+
+      <div class="input-group">
+        <input
+          type="url"
+          id="mapsInput"
+          placeholder="https://maps.google.com/..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="pasteBtn" class="btn btn-secondary" title="Paste from clipboard">
+          Paste
+        </button>
+      </div>
+
+      <button id="convertBtn" class="btn btn-primary">Convert to GPS</button>
+
+      <div id="errorMsg" class="error-msg hidden"></div>
+
+      <!-- Result -->
+      <div id="result" class="result hidden">
+        <div class="coords-display">
+          <div class="coord">
+            <span class="coord-label">Latitude</span>
+            <span id="lat" class="coord-value">—</span>
+          </div>
+          <div class="coord-divider"></div>
+          <div class="coord">
+            <span class="coord-label">Longitude</span>
+            <span id="lng" class="coord-value">—</span>
+          </div>
+        </div>
+
+        <div id="successMsg" class="success-msg hidden">
+          ✓ Coordinates copied to clipboard!
+        </div>
+
+        <div class="action-buttons">
+          <button id="copyBtn" class="btn btn-secondary">Copy Coords</button>
+          <button id="bmwBtn" class="btn btn-bmw">Open BMW App</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════ SETTINGS -->
+    <section class="card settings-card">
+      <button class="settings-toggle" id="settingsToggle" aria-expanded="false">
+        <span class="settings-toggle-left">
+          <span class="settings-icon">⚙</span>
+          <span>API Key Settings</span>
+        </span>
+        <span id="keyStatus" class="key-status key-status--missing">Not set</span>
+      </button>
+
+      <div class="settings-body hidden" id="settingsBody">
+        <p class="settings-info">
+          Required only for place-name URLs. Your key is saved <strong>on this device only</strong> — it is never sent anywhere except directly to Google.
+        </p>
+        <div class="input-group" style="margin-bottom: 10px;">
+          <input
+            type="password"
+            id="apiKeyInput"
+            placeholder="AIza..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button id="toggleKeyVisibility" class="btn btn-secondary" title="Show / hide key">
+            Show
+          </button>
+        </div>
+        <div class="settings-actions">
+          <button id="saveKeyBtn" class="btn btn-primary" style="flex:1;">Save Key</button>
+          <button id="clearKeyBtn" class="btn btn-ghost">Remove</button>
+        </div>
+        <p class="settings-tip">
+          Restrict this key to <strong>Geocoding API</strong> + your domain in
+          <a href="https://console.cloud.google.com" target="_blank" rel="noopener">Google Cloud Console</a>
+          to prevent misuse.
+        </p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════ RECENT RIDES -->
+    <section class="card history-card">
+      <div class="history-header">
+        <h2>Recent Rides</h2>
+        <button id="clearBtn" class="btn btn-ghost">Clear All</button>
+      </div>
+      <ul id="historyList" class="history-list">
+        <li class="empty-state">No rides yet — convert a location to get started.</li>
+      </ul>
+    </section>
+
+    <!-- ═══════════════════════════════════ AFFILIATE -->
+    <section class="card affiliate-card">
+      <p class="affiliate-eyebrow">Gear Up</p>
+      <h3>Recommended Riding Gear</h3>
+      <p class="affiliate-sub">Handpicked for BMW riders</p>
+
+      <div class="affiliate-grid">
+        <a href="#" class="affiliate-item" rel="noopener sponsored">
+          <span class="affiliate-icon">🪖</span>
+          <div class="affiliate-text">
+            <strong>Premium Helmet</strong>
+            <span>Shop on Amazon →</span>
+          </div>
+        </a>
+        <a href="#" class="affiliate-item" rel="noopener sponsored">
+          <span class="affiliate-icon">🧤</span>
+          <div class="affiliate-text">
+            <strong>Riding Gloves</strong>
+            <span>Shop on Amazon →</span>
+          </div>
+        </a>
+        <a href="#" class="affiliate-item" rel="noopener sponsored">
+          <span class="affiliate-icon">🥾</span>
+          <div class="affiliate-text">
+            <strong>Moto Boots</strong>
+            <span>Shop on Amazon →</span>
+          </div>
+        </a>
+        <a href="#" class="affiliate-item" rel="noopener sponsored">
+          <span class="affiliate-icon">📱</span>
+          <div class="affiliate-text">
+            <strong>Phone Mount</strong>
+            <span>Shop on Amazon →</span>
+          </div>
+        </a>
+      </div>
+
+      <p class="affiliate-disclaimer">
+        * As an Amazon Associate we may earn from qualifying purchases.
+      </p>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>ConnectedRide Bridge &copy; 2025 &mdash; Built for riders, by riders.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
