@@ -31,23 +31,29 @@ exports.handler = async (event) => {
 
   try {
     const result = await smartResolve(url);
-    // Log for Netlify function dashboard debugging
+
+    let { lat, lng } = result;
+
+    // If no coords found in URL/HTML, try geocoding the ?q= address via Nominatim
+    if (lat === null || lng === null) {
+      try {
+        const u = new URL(result.finalUrl);
+        const q = u.searchParams.get('q');
+        if (q) {
+          const geo = await geocodeNominatim(q);
+          if (geo) { lat = geo.lat; lng = geo.lng; }
+        }
+      } catch { /* ignore */ }
+    }
+
     console.log('[resolve-url]', JSON.stringify({
-      input: url,
-      finalUrl: result.finalUrl,
-      lat: result.lat,
-      lng: result.lng,
-      hops: result.hops,
+      input: url, finalUrl: result.finalUrl, lat, lng, hops: result.hops,
     }));
 
     return {
       statusCode: 200,
       headers: resHeaders,
-      body: JSON.stringify({
-        finalUrl: result.finalUrl,
-        lat: result.lat,
-        lng: result.lng,
-      }),
+      body: JSON.stringify({ finalUrl: result.finalUrl, lat, lng }),
     };
   } catch (err) {
     console.error('[resolve-url] error:', err.message);
@@ -164,6 +170,26 @@ function extractCoordsFromUrl(url) {
   } catch { /* ignore */ }
 
   return null;
+}
+
+/* ── Nominatim geocoder (OpenStreetMap) — no API key needed ─── */
+async function geocodeNominatim(address) {
+  const endpoint =
+    `https://nominatim.openstreetmap.org/search` +
+    `?q=${encodeURIComponent(address)}&format=json&limit=1`;
+
+  const res = await fetch(endpoint, {
+    headers: {
+      'User-Agent': 'ConnectedRideBridge/1.0',
+      'Accept':     'application/json',
+    },
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!Array.isArray(data) || data.length === 0) return null;
+
+  return validCoord(data[0].lat, data[0].lon);
 }
 
 function extractCoordsFromHtml(html) {
