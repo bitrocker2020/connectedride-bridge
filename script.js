@@ -1,11 +1,5 @@
 /* ══════════════════════════════════════════════════════════════
    ConnectedRide Bridge — script.js
-   ══════════════════════════════════════════════════════════════
-
-   To enable Geocoding fallback for short/place-name URLs:
-   1. Get a key at https://developers.google.com/maps/documentation/geocoding/get-api-key
-   2. Replace the placeholder below with your actual key.
-   3. Restrict the key to the Geocoding API in the GCP console.
    ══════════════════════════════════════════════════════════════ */
 
 // API key is NEVER stored in source code.
@@ -19,20 +13,18 @@ function getApiKey() {
 }
 
 /* ── DOM refs ────────────────────────────────────────────────── */
-const mapsInput         = document.getElementById('mapsInput');
-const pasteBtn          = document.getElementById('pasteBtn');
-const convertBtn        = document.getElementById('convertBtn');
-const errorBox          = document.getElementById('errorMsg');
-const resultEl          = document.getElementById('result');
-const latEl             = document.getElementById('lat');
-const lngEl             = document.getElementById('lng');
-const successMsg        = document.getElementById('successMsg');
-const copyBtn           = document.getElementById('copyBtn');
-const bmwBtn            = document.getElementById('bmwBtn');
-const historyList       = document.getElementById('historyList');
-const clearBtn          = document.getElementById('clearBtn');
-
-// Settings
+const mapsInput           = document.getElementById('mapsInput');
+const pasteBtn            = document.getElementById('pasteBtn');
+const convertBtn          = document.getElementById('convertBtn');
+const errorBox            = document.getElementById('errorMsg');
+const resultEl            = document.getElementById('result');
+const latEl               = document.getElementById('lat');
+const lngEl               = document.getElementById('lng');
+const successMsg          = document.getElementById('successMsg');
+const copyBtn             = document.getElementById('copyBtn');
+const bmwBtn              = document.getElementById('bmwBtn');
+const historyList         = document.getElementById('historyList');
+const clearBtn            = document.getElementById('clearBtn');
 const settingsToggle      = document.getElementById('settingsToggle');
 const settingsBody        = document.getElementById('settingsBody');
 const apiKeyInput         = document.getElementById('apiKeyInput');
@@ -113,37 +105,82 @@ async function convertLink(url) {
 
 /* ══════════════════════════════════════════════════════════════
    SHORT URL RESOLUTION
-   maps.app.goo.gl and goo.gl/maps are redirects — the coordinates
-   only appear in the final expanded URL. We follow the redirect via
-   the allorigins.win CORS proxy which returns status.url (final URL).
+   maps.app.goo.gl and goo.gl/maps are redirects — coordinates only
+   appear in the final expanded URL. We try two CORS proxies in order,
+   and parse the HTML response to find the canonical URL with coords.
    ══════════════════════════════════════════════════════════════ */
 function isShortUrl(url) {
   return /maps\.app\.goo\.gl|goo\.gl\/maps/.test(url);
 }
 
-async function resolveShortUrl(url) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
+async function fetchWithTimeout(url, ms) {
+  const ac = new AbortController();
+  const t  = setTimeout(() => ac.abort(), ms);
   try {
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res  = await fetch(proxyUrl, { signal: controller.signal });
-    if (!res.ok) throw new Error(`Proxy error ${res.status}`);
-    const data = await res.json();
-    const finalUrl = data.status?.url;
-    if (!finalUrl) throw new Error('Proxy did not return a final URL.');
-    return finalUrl;
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error('Timed out resolving short URL — check your connection.');
-    throw new Error(`Could not expand short link: ${err.message}`);
+    return await fetch(url, { signal: ac.signal });
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(t);
   }
+}
+
+// Extract canonical Google Maps URL from proxy HTML response.
+// og:url and <link rel="canonical"> both reliably contain @lat,lng.
+function extractFromHtml(html) {
+  if (!html) return null;
+
+  const ogUrl =
+    html.match(/property="og:url"\s+content="([^"]+)"/)?.[1] ||
+    html.match(/content="([^"]+)"\s+property="og:url"/)?.[1];
+  if (ogUrl) return ogUrl.replace(/&amp;/g, '&');
+
+  const canonical =
+    html.match(/rel="canonical"\s+href="([^"]+)"/)?.[1] ||
+    html.match(/href="([^"]+)"\s+rel="canonical"/)?.[1];
+  if (canonical) return canonical.replace(/&amp;/g, '&');
+
+  return null;
+}
+
+async function resolveShortUrl(url) {
+  const encoded = encodeURIComponent(url);
+
+  // ── Proxy 1: allorigins.win ──────────────────────────────────
+  // Returns JSON: { status: { url: "<final URL>" }, contents: "<HTML>" }
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.allorigins.win/get?url=${encoded}`, 7000
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const finalUrl = data.status?.url;
+      if (finalUrl && finalUrl !== url) return finalUrl;
+      // status.url sometimes echoes the short URL — parse HTML instead
+      const fromHtml = extractFromHtml(data.contents || '');
+      if (fromHtml) return fromHtml;
+    }
+  } catch { /* proxy failed — try next */ }
+
+  // ── Proxy 2: corsproxy.io ────────────────────────────────────
+  // Returns raw HTML of the final page; parse it for the canonical URL.
+  try {
+    const res = await fetchWithTimeout(
+      `https://corsproxy.io/?${encoded}`, 7000
+    );
+    if (res.ok) {
+      const html = await res.text();
+      const fromHtml = extractFromHtml(html);
+      if (fromHtml) return fromHtml;
+    }
+  } catch { /* both proxies failed */ }
+
+  throw new Error(
+    'Could not expand this short link (both proxies failed). ' +
+    'Open the link in your browser, then copy the full URL from the address bar and paste that instead.'
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════
    URL PARSING  (no API key required)
-   ══════════════════════════════════════════════════════════════
 
    Handles these Google Maps URL formats:
    ① /maps/place/Name/@lat,lng,zoom      → @-coord extraction
@@ -155,11 +192,8 @@ async function resolveShortUrl(url) {
 function extractCoordsFromUrl(url) {
   // ① ② @lat,lng anywhere in the path
   const atMatch = url.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
-  if (atMatch) {
-    return coord(atMatch[1], atMatch[2]);
-  }
+  if (atMatch) return coord(atMatch[1], atMatch[2]);
 
-  // Try URL params
   let u;
   try { u = new URL(url); } catch { return null; }
 
@@ -177,7 +211,7 @@ function extractCoordsFromUrl(url) {
     if (m) return coord(m[1], m[2]);
   }
 
-  // ⑤ ?daddr=lat,lng  (directions destination)
+  // ⑤ ?daddr=lat,lng
   const daddr = u.searchParams.get('daddr');
   if (daddr) {
     const m = daddr.match(/^(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)$/);
@@ -190,7 +224,6 @@ function extractCoordsFromUrl(url) {
 function coord(latStr, lngStr) {
   const lat = parseFloat(latStr);
   const lng = parseFloat(lngStr);
-  // Basic sanity-check
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
   return { lat, lng };
 }
@@ -206,7 +239,6 @@ async function geocodeViaApi(url) {
     );
   }
 
-  // Extract a place query from the URL path or params
   let query = '';
   try {
     const u = new URL(url);
@@ -214,19 +246,14 @@ async function geocodeViaApi(url) {
     if (q) {
       query = q;
     } else {
-      // /maps/place/Place+Name/@...  or  /maps/search/Place+Name
       const pathMatch = u.pathname.match(/\/maps\/(?:place|search)\/([^/@]+)/);
-      if (pathMatch) {
-        query = decodeURIComponent(pathMatch[1].replace(/\+/g, ' '));
-      }
+      if (pathMatch) query = decodeURIComponent(pathMatch[1].replace(/\+/g, ' '));
     }
   } catch {
-    query = url; // last resort: geocode the raw string
+    query = url;
   }
 
-  if (!query) {
-    throw new Error('Cannot determine a place name from this URL to geocode.');
-  }
+  if (!query) throw new Error('Cannot determine a place name from this URL to geocode.');
 
   const endpoint =
     `https://maps.googleapis.com/maps/api/geocode/json` +
@@ -241,10 +268,10 @@ async function geocodeViaApi(url) {
   }
 
   const msg = {
-    ZERO_RESULTS:      'No results found for that place name.',
-    REQUEST_DENIED:    'Geocoding API request denied — check your API key.',
-    OVER_QUERY_LIMIT:  'API quota exceeded — try again later.',
-    INVALID_REQUEST:   'Invalid API request.',
+    ZERO_RESULTS:     'No results found for that place name.',
+    REQUEST_DENIED:   'Geocoding API request denied — check your API key.',
+    OVER_QUERY_LIMIT: 'API quota exceeded — try again later.',
+    INVALID_REQUEST:  'Invalid API request.',
   }[data.status] || `Geocoding failed (${data.status}).`;
 
   throw new Error(msg);
@@ -257,7 +284,6 @@ async function copyToClipboard(text) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    // Fallback for browsers/contexts that block clipboard API
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
@@ -278,8 +304,6 @@ copyBtn.addEventListener('click', () => {
 
 /* ══════════════════════════════════════════════════════════════
    BMW APP LAUNCH
-   Uses the standard geo: URI scheme (opens BMW Connected, Google
-   Maps, or the system default navigation app on Android/iOS).
    ══════════════════════════════════════════════════════════════ */
 bmwBtn.addEventListener('click', () => {
   if (currentLat === null) return;
@@ -294,23 +318,21 @@ bmwBtn.addEventListener('click', () => {
 function saveToHistory(lat, lng, sourceUrl) {
   const history = loadHistory();
 
-  // Truncate source URL for display
   const maxLen = 48;
   const source = sourceUrl.length > maxLen
     ? sourceUrl.slice(0, maxLen) + '…'
     : sourceUrl;
 
   const entry = {
-    lat:    lat.toFixed(6),
-    lng:    lng.toFixed(6),
+    lat:  lat.toFixed(6),
+    lng:  lng.toFixed(6),
     source,
-    date:   new Date().toLocaleString('en-US', {
+    date: new Date().toLocaleString('en-US', {
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',
     }),
   };
 
-  // Avoid duplicate consecutive entries
   if (history.length > 0 && history[0].lat === entry.lat && history[0].lng === entry.lng) {
     return;
   }
@@ -320,9 +342,7 @@ function saveToHistory(lat, lng, sourceUrl) {
 
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-  } catch {
-    // localStorage unavailable (private mode, etc.) — silently skip
-  }
+  } catch { /* private mode — skip */ }
 
   renderHistory();
 }
@@ -422,10 +442,9 @@ function escapeHtml(str) {
    ══════════════════════════════════════════════════════════════ */
 function updateKeyStatus() {
   const saved = !!getApiKey();
-  keyStatus.textContent       = saved ? 'Key saved' : 'Not set';
-  keyStatus.className         = `key-status ${saved ? 'key-status--saved' : 'key-status--missing'}`;
+  keyStatus.textContent = saved ? 'Key saved' : 'Not set';
+  keyStatus.className   = `key-status ${saved ? 'key-status--saved' : 'key-status--missing'}`;
   if (saved) {
-    // Pre-fill input with masked placeholder so user knows a key exists
     apiKeyInput.value       = '';
     apiKeyInput.placeholder = '••••••••••••••••••••';
   } else {
@@ -433,42 +452,34 @@ function updateKeyStatus() {
   }
 }
 
-// Collapse / expand
 settingsToggle.addEventListener('click', () => {
   const isOpen = settingsToggle.getAttribute('aria-expanded') === 'true';
   settingsToggle.setAttribute('aria-expanded', String(!isOpen));
   settingsBody.classList.toggle('hidden', isOpen);
 });
 
-// Show / hide key
 toggleKeyVisibility.addEventListener('click', () => {
   const isPassword = apiKeyInput.type === 'password';
-  apiKeyInput.type              = isPassword ? 'text' : 'password';
+  apiKeyInput.type                = isPassword ? 'text' : 'password';
   toggleKeyVisibility.textContent = isPassword ? 'Hide' : 'Show';
 });
 
-// Save
 saveKeyBtn.addEventListener('click', () => {
   const val = apiKeyInput.value.trim();
-  if (!val) {
-    alert('Please paste your API key first.');
-    return;
-  }
+  if (!val) { alert('Please paste your API key first.'); return; }
   if (!val.startsWith('AIza') || val.length < 30) {
     alert('That doesn\'t look like a valid Google API key (should start with "AIza").');
     return;
   }
   localStorage.setItem(API_KEY_STORAGE, val);
-  apiKeyInput.value = '';
-  apiKeyInput.type  = 'password';
+  apiKeyInput.value               = '';
+  apiKeyInput.type                = 'password';
   toggleKeyVisibility.textContent = 'Show';
   updateKeyStatus();
-  // Collapse panel after saving
   settingsToggle.setAttribute('aria-expanded', 'false');
   settingsBody.classList.add('hidden');
 });
 
-// Remove
 clearKeyBtn.addEventListener('click', () => {
   if (!confirm('Remove your saved API key from this device?')) return;
   localStorage.removeItem(API_KEY_STORAGE);
