@@ -75,14 +75,18 @@ async function convertLink(url) {
   hideResult();
 
   try {
-    // Step 1: expand short URLs (maps.app.goo.gl, goo.gl/maps) via CORS proxy
     let resolvedUrl = url;
+    let coords = null;
+
+    // Step 1: expand short URLs via Netlify function (returns coords + finalUrl)
     if (isShortUrl(url)) {
-      resolvedUrl = await resolveShortUrl(url);
+      const resolved = await resolveShortUrl(url);
+      resolvedUrl = resolved.finalUrl;
+      coords = resolved.coords; // already extracted server-side from URL + HTML
     }
 
-    // Step 2: try to extract coords directly from the resolved URL (no API needed)
-    let coords = extractCoordsFromUrl(resolvedUrl);
+    // Step 2: try to extract coords from the resolved URL (no API needed)
+    if (!coords) coords = extractCoordsFromUrl(resolvedUrl);
 
     // Step 3: fall back to Geocoding API for place-name URLs
     if (!coords) {
@@ -145,18 +149,22 @@ function extractFromHtml(html) {
   return null;
 }
 
+// Returns { finalUrl: string, coords: {lat,lng}|null }
 async function resolveShortUrl(url) {
   const encoded = encodeURIComponent(url);
 
-  // ── Method 1: Netlify serverless function (when deployed) ────
-  // Server-side redirect following — no CORS, no bot detection.
+  // ── Method 1: Netlify serverless function ────────────────────
+  // Fetches the page server-side, extracts coords from URL + HTML.
   try {
     const res = await fetchWithTimeout(
-      `/.netlify/functions/resolve-url?url=${encoded}`, 6000
+      `/.netlify/functions/resolve-url?url=${encoded}`, 8000
     );
     if (res.ok) {
       const data = await res.json();
-      if (data.finalUrl && data.finalUrl !== url) return data.finalUrl;
+      const coords = (data.lat && data.lng)
+        ? { lat: data.lat, lng: data.lng }
+        : null;
+      return { finalUrl: data.finalUrl || url, coords };
     }
   } catch { /* not on Netlify — try external proxies */ }
 
@@ -167,10 +175,10 @@ async function resolveShortUrl(url) {
     );
     if (res.ok) {
       const data = await res.json();
-      const finalUrl = data.status?.url;
-      if (finalUrl && finalUrl !== url) return finalUrl;
-      const fromHtml = extractFromHtml(data.contents || '');
-      if (fromHtml) return fromHtml;
+      const finalUrl = (data.status?.url && data.status.url !== url)
+        ? data.status.url
+        : extractFromHtml(data.contents || '');
+      if (finalUrl) return { finalUrl, coords: null };
     }
   } catch { /* try next */ }
 
@@ -181,8 +189,8 @@ async function resolveShortUrl(url) {
     );
     if (res.ok) {
       const html = await res.text();
-      const fromHtml = extractFromHtml(html);
-      if (fromHtml) return fromHtml;
+      const finalUrl = extractFromHtml(html);
+      if (finalUrl) return { finalUrl, coords: null };
     }
   } catch { /* all methods exhausted */ }
 
