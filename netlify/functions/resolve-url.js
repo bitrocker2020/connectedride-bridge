@@ -266,9 +266,25 @@ async function geocodePhoton(query) {
 function extractCoordsFromHtml(html) {
   if (!html) return null;
 
-  // !3d{lat}!4d{lng} embedded in page source
+  // !3d{lat}!4d{lng} embedded anywhere in page source (most reliable)
   const d = html.match(/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/);
   if (d) return validCoord(d[1], d[2]);
+
+  // og:url and canonical often contain the full Maps URL with !3d!4d or @lat,lng
+  const ogUrl =
+    html.match(/property="og:url"\s+content="([^"]+)"/)?.[1] ||
+    html.match(/content="([^"]+)"\s+property="og:url"/)?.[1];
+  if (ogUrl) {
+    const c = extractCoordsFromUrl(ogUrl.replace(/&amp;/g, '&'));
+    if (c) return c;
+  }
+  const canonical =
+    html.match(/rel="canonical"\s+href="([^"]+)"/)?.[1] ||
+    html.match(/href="([^"]+)"\s+rel="canonical"/)?.[1];
+  if (canonical) {
+    const c = extractCoordsFromUrl(canonical.replace(/&amp;/g, '&'));
+    if (c) return c;
+  }
 
   // itemprop latitude / longitude
   const latM = html.match(/itemprop="latitude"[^>]*content="(-?\d{1,3}\.\d+)"/);
@@ -283,8 +299,8 @@ function extractCoordsFromHtml(html) {
   const ll = html.match(/"lat"\s*:\s*(-?\d{1,3}\.\d+)\s*,\s*"lng"\s*:\s*(-?\d{1,3}\.\d+)/);
   if (ll) return validCoord(ll[1], ll[2]);
 
-  // @lat,lng with ≥5 decimal places (precise enough to be real)
-  const at = html.match(/@(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
+  // @lat,lng with ≥5 decimal places anchored inside a URL href/content — avoid matching raw JS numbers
+  const at = html.match(/(?:href|content)="[^"]*@(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/);
   if (at) return validCoord(at[1], at[2]);
 
   return null;
