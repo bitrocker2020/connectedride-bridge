@@ -8,9 +8,11 @@ const https = require('https');
 const http  = require('http');
 
 const HEADERS = {
+  // Desktop UA — mobile UAs cause Google to redirect to app-store/universal links
+  // with no embedded coordinates, forcing a geocoding fallback.
   'User-Agent':
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
-    'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+    '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
 };
@@ -218,7 +220,8 @@ async function geocodeNominatim(query) {
   try {
     const endpoint =
       `https://nominatim.openstreetmap.org/search` +
-      `?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=0`;
+      `?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=0` +
+      `&countrycodes=my`;  // Malaysia only — prevents cross-continent false matches
 
     const res = await fetch(endpoint, {
       headers: {
@@ -256,6 +259,8 @@ async function geocodePhoton(query) {
     const feat = data?.features?.[0];
     if (!feat) return null;
     const [lng, lat] = feat.geometry?.coordinates ?? [];
+    // Reject if outside Malaysia's bounding box (prevents cross-continent returns)
+    if (lat < 0.8 || lat > 8.0 || lng < 99.0 || lng > 119.5) return null;
     console.log('[resolve-url] Photon hit:', query, '->', lat, lng);
     return validCoord(lat, lng);
   } catch {
