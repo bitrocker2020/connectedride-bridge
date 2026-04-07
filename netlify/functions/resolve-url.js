@@ -72,30 +72,34 @@ async function smartResolve(startUrl) {
     const { status, location, html } = await makeRequest(current);
     hops.push({ url: current.substring(0, 120), status });
 
-    // Always check the current URL first
-    let coords = extractCoordsFromUrl(current);
-    if (coords) return { finalUrl: current, ...coords, hops };
-
     if (status >= 300 && status < 400 && location) {
-      // Resolve relative redirects
       const next = location.startsWith('http')
         ? location
         : new URL(location, current).href;
 
-      // Check the redirect target URL for coords BEFORE following
-      coords = extractCoordsFromUrl(next);
-      if (coords) return { finalUrl: next, ...coords, hops };
+      // During redirects only short-circuit on !3d!4d (exact place pin).
+      // Ignore @lat,lng — that is only the viewport center and the actual
+      // pin coords live in the final page URL or its HTML.
+      const pin = extractPinCoords(next);
+      if (pin) return { finalUrl: next, ...pin, hops };
 
       current = next;
       continue;
     }
 
-    // Final page — parse HTML
-    coords = extractCoordsFromHtml(html);
+    // Final page reached — priority: pin > HTML > viewport (last resort)
+    const pin = extractPinCoords(current);
+    if (pin) return { finalUrl: current, ...pin, hops };
+
+    const fromHtml = extractCoordsFromHtml(html);
+    if (fromHtml) return { finalUrl: current, ...fromHtml, hops };
+
+    // Viewport @lat,lng only used when nothing else is available
+    const viewport = extractViewportCoords(current);
     return {
       finalUrl: current,
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
+      lat: viewport?.lat ?? null,
+      lng: viewport?.lng ?? null,
       hops,
     };
   }
@@ -152,16 +156,18 @@ function validCoord(lat, lng) {
   return { lat, lng };
 }
 
-function extractCoordsFromUrl(url) {
-  // !3d{lat}!4d{lng} is the actual place pin — check before viewport @lat,lng
+// Exact place pin only — used during redirect hops to avoid premature returns
+function extractPinCoords(url) {
   const d = url.match(/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/);
   if (d) return validCoord(d[1], d[2]);
+  return null;
+}
 
-  // @lat,lng  (viewport center — fallback only)
+// Viewport / query coords — only used as last resort on the final page
+function extractViewportCoords(url) {
   const at = url.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
   if (at) return validCoord(at[1], at[2]);
 
-  // ?q=lat,lng
   try {
     const u = new URL(url);
     const q = u.searchParams.get('q');
@@ -313,14 +319,16 @@ function extractCoordsFromHtml(html) {
     html.match(/property="og:url"\s+content="([^"]+)"/)?.[1] ||
     html.match(/content="([^"]+)"\s+property="og:url"/)?.[1];
   if (ogUrl) {
-    const c = extractCoordsFromUrl(ogUrl.replace(/&amp;/g, '&'));
+    const decoded = ogUrl.replace(/&amp;/g, '&');
+    const c = extractPinCoords(decoded) || extractViewportCoords(decoded);
     if (c) return c;
   }
   const canonical =
     html.match(/rel="canonical"\s+href="([^"]+)"/)?.[1] ||
     html.match(/href="([^"]+)"\s+rel="canonical"/)?.[1];
   if (canonical) {
-    const c = extractCoordsFromUrl(canonical.replace(/&amp;/g, '&'));
+    const decoded = canonical.replace(/&amp;/g, '&');
+    const c = extractPinCoords(decoded) || extractViewportCoords(decoded);
     if (c) return c;
   }
 
