@@ -178,41 +178,74 @@ function extractCoordsFromUrl(url) {
 async function geocodeCascade(rawAddress) {
   // Normalise: decode URL-encoded chars, collapse whitespace
   const address = decodeURIComponent(rawAddress).replace(/\+/g, ' ').trim();
+  const placeName = address.split(',')[0].trim();
 
-  // ── Strategy 1: Nominatim — full address ─────────────────────
+  // ── Strategy 1: Google Geocoding API (most accurate) ─────────
+  const googleKey = process.env.GOOGLE_GEOCODING_API_KEY;
+  if (googleKey) {
+    let result = await geocodeGoogle(address, googleKey);
+    if (result) return result;
+    // Retry with ", Malaysia" appended if not already present
+    if (!address.toLowerCase().includes('malaysia')) {
+      result = await geocodeGoogle(address + ', Malaysia', googleKey);
+      if (result) return result;
+    }
+  }
+
+  // ── Strategy 2: Nominatim — full address ─────────────────────
   let result = await geocodeNominatim(address);
   if (result) return result;
 
-  // ── Strategy 2: Nominatim — full address + ", Malaysia" ──────
+  // ── Strategy 3: Nominatim — full address + ", Malaysia" ──────
   if (!address.toLowerCase().includes('malaysia')) {
     result = await geocodeNominatim(address + ', Malaysia');
     if (result) return result;
   }
 
-  // ── Strategy 3: Nominatim — simplified (name + postcode) ─────
-  // Extract: first comma-delimited token (place name) + any 5-digit postcode
+  // ── Strategy 4: Nominatim — simplified (name + postcode) ─────
   const postcodeMatch = address.match(/\b(\d{5})\b/);
-  const placeName     = address.split(',')[0].trim();
   if (postcodeMatch && placeName) {
     result = await geocodeNominatim(`${placeName}, ${postcodeMatch[1]}, Malaysia`);
     if (result) return result;
 
-    // Strategy 3b: postcode-only (gives area-level coords)
     result = await geocodeNominatim(`${postcodeMatch[1]}, Malaysia`);
     if (result) return result;
   }
 
-  // ── Strategy 4: Photon (komoot) — full address ───────────────
+  // ── Strategy 5: Photon (komoot) — full address ───────────────
   result = await geocodePhoton(address);
   if (result) return result;
 
-  // ── Strategy 5: Photon — place name only ─────────────────────
+  // ── Strategy 6: Photon — place name only ─────────────────────
   if (placeName && placeName !== address) {
     result = await geocodePhoton(placeName + ' Malaysia');
     if (result) return result;
   }
 
   return null;
+}
+
+/* ── Google Geocoding API ────────────────────────────────────── */
+async function geocodeGoogle(query, apiKey) {
+  try {
+    const endpoint =
+      `https://maps.googleapis.com/maps/api/geocode/json` +
+      `?address=${encodeURIComponent(query)}&key=${apiKey}`;
+
+    const res = await fetch(endpoint, {
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status !== 'OK' || !data.results?.length) return null;
+
+    const { lat, lng } = data.results[0].geometry.location;
+    console.log('[resolve-url] Google Geocoding hit:', query, '->', lat, lng);
+    return validCoord(lat, lng);
+  } catch {
+    return null;
+  }
 }
 
 /* ── Nominatim geocoder (OpenStreetMap) — no API key needed ─── */
