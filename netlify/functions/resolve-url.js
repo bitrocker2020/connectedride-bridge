@@ -151,13 +151,13 @@ function validCoord(lat, lng) {
 }
 
 function extractCoordsFromUrl(url) {
-  // @lat,lng  (viewport coords)
-  const at = url.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
-  if (at) return validCoord(at[1], at[2]);
-
-  // !3d{lat}!4d{lng}  (place data blob)
+  // !3d{lat}!4d{lng} is the actual place pin — check before viewport @lat,lng
   const d = url.match(/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/);
   if (d) return validCoord(d[1], d[2]);
+
+  // @lat,lng  (viewport center — fallback only)
+  const at = url.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (at) return validCoord(at[1], at[2]);
 
   // ?q=lat,lng
   try {

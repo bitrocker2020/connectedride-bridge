@@ -180,11 +180,12 @@ async function resolveShortUrl(url) {
    ⑥ ?daddr=lat,lng
    ══════════════════════════════════════════════════════════════ */
 function extractCoordsFromUrl(url) {
-  const atMatch = url.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
-  if (atMatch) return coord(atMatch[1], atMatch[2]);
-
+  // !3d{lat}!4d{lng} is the actual place pin — check before viewport @lat,lng
   const dataMatch = url.match(/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/);
   if (dataMatch) return coord(dataMatch[1], dataMatch[2]);
+
+  const atMatch = url.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (atMatch) return coord(atMatch[1], atMatch[2]);
 
   let u;
   try { u = new URL(url); } catch { return null; }
